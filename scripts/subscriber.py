@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 
 import rospy
+import numpy as np
 from sensor_msgs.msg import Image
 import cv2
 from cv_bridge import CvBridge
 
 
 background = None
+fgbg = cv2.BackgroundSubtractorMOG()
 
 
 def process_raw_img(img):
@@ -22,12 +24,17 @@ def find_contours(img_delta):
     return contours
 
 
-def draw_box_around_object(contours, img):
-    for c in contours:
-        # compute the bounding box for the contour, draw it on the frame,
-        # and update the text
-        (x, y, w, h) = cv2.boundingRect(c)
-        cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+def find_larges_contour(contours):
+    areas = [cv2.contourArea(c) for c in contours]
+    largest_contour_index = np.argmax(areas)
+    return contours[largest_contour_index]
+
+
+def draw_box_around_object(contour, img):
+    # compute the bounding box for the contour, draw it on the frame,
+    # and update the text
+    (x, y, w, h) = cv2.boundingRect(contour)
+    cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
 
 def image_color_callback(data):
@@ -41,10 +48,12 @@ def image_color_callback(data):
     if background is None:
         background = gray_img
 
-    img_delta = cv2.absdiff(background, gray_img)
+    img_delta = fgbg.apply(gray_img)
 
     contours = find_contours(img_delta)
-    draw_box_around_object(contours, cv2_img)
+    if contours:
+        largest_contour = find_larges_contour(contours)
+        draw_box_around_object(largest_contour, cv2_img)
 
     cv2.imshow('image', cv2_img)
     cv2.waitKey(3)
