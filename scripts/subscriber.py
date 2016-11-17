@@ -12,12 +12,29 @@ fgbg = cv2.BackgroundSubtractorMOG()
 
 
 def process_raw_img(img):
+    """ Convert BGR image to gray scale and blur for processing
+
+    Args:
+        img(cv2 image): BGR image
+
+    Returns:
+        cv2 image: gray scale image
+
+    """
     gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray_img = cv2.GaussianBlur(gray_img, (21, 21), 0)
     return gray_img
 
 
 def find_contours(img_delta):
+    """ Find all contours in image mask
+
+    Args:
+        img_delta(cv2 foreground mask):
+
+    Returns:
+        list: list of available contours
+    """
     thresh = cv2.threshold(img_delta, 25, 255, cv2.THRESH_BINARY)[1]
     (contours, _) = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,
                                      cv2.CHAIN_APPROX_SIMPLE)
@@ -25,14 +42,17 @@ def find_contours(img_delta):
 
 
 def find_larges_contour(contours):
+    """Return largest contour in the list of contour
+    """
     areas = [cv2.contourArea(c) for c in contours]
     largest_contour_index = np.argmax(areas)
     return contours[largest_contour_index]
 
 
 def draw_box_around_object(contour, img):
-    # compute the bounding box for the contour, draw it on the frame,
-    # and update the text
+    """Compute the bounding box for the contour, draw it on the frame,
+
+    """
     (x, y, w, h) = cv2.boundingRect(contour)
     cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
@@ -43,22 +63,24 @@ def image_color_callback(data):
 
     gray_img = process_raw_img(cv2_img)
 
+    # Presume that the first frame is the background
     global background
 
     if background is None:
         background = gray_img
 
+    # Foreground mask using MOG
     img_delta = fgbg.apply(gray_img)
 
+    # Get largest contour, presuming that is the object
     contours = find_contours(img_delta)
     if contours:
         largest_contour = find_larges_contour(contours)
         draw_box_around_object(largest_contour, cv2_img)
 
-    cv2.imshow('image', cv2_img)
+    cv2.imshow('kinect_img_color_detection_feed', cv2_img)
+    cv2.imshow('kinect_img_background_mask', img_delta)
     cv2.waitKey(3)
-
-    # if firist run, initialize firs frame to be background
 
 
 def listener():
