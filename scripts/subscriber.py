@@ -9,6 +9,12 @@ from cv_bridge import CvBridge
 
 background = None
 fgbg = cv2.BackgroundSubtractorMOG()
+full_body_cascade = './haarcascade_fullbody.xml'
+human_cascade = cv2.CascadeClassifier(full_body_cascade)
+
+
+def detect_human(img):
+    return human_cascade.detectMultiScale(img, 1.1, 1)
 
 
 def process_raw_img(img):
@@ -54,7 +60,30 @@ def draw_box_around_object(contour, img):
 
     """
     (x, y, w, h) = cv2.boundingRect(contour)
-    cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+    cv2.rectangle(img, (x, y), (x + w, y + h), (0, 51, 51), 2)
+
+
+def draw_box_around_human(img, human):
+    for (x, y, w, h) in human:
+        cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
+
+
+def human_detection_callback(cv2_img, gray_img):
+    human = detect_human(gray_img)
+    draw_box_around_human(cv2_img, human)
+
+
+def movement_detection_callback(cv2_img, gray_img):
+    # Foreground mask using MOG
+    img_delta = fgbg.apply(gray_img)
+
+    # Get largest contour, presuming that is the object
+    contours = find_contours(img_delta)
+    if contours:
+        largest_contour = find_larges_contour(contours)
+        draw_box_around_object(largest_contour, cv2_img)
+
+    cv2.imshow('kinect_img_background_mask', img_delta)
 
 
 def image_color_callback(data):
@@ -69,18 +98,11 @@ def image_color_callback(data):
     if background is None:
         background = gray_img
 
-    # Foreground mask using MOG
-    img_delta = fgbg.apply(gray_img)
-
-    # Get largest contour, presuming that is the object
-    contours = find_contours(img_delta)
-    if contours:
-        largest_contour = find_larges_contour(contours)
-        draw_box_around_object(largest_contour, cv2_img)
+    movement_detection_callback(cv2_img, gray_img)
+    human_detection_callback(cv2_img, gray_img)
 
     cv2.imshow('kinect_img_color_detection_feed', cv2_img)
-    cv2.imshow('kinect_img_background_mask', img_delta)
-    cv2.waitKey(3)
+    cv2.waitKey(25)
 
 
 def listener():
