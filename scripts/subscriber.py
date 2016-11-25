@@ -29,7 +29,9 @@ def process_raw_img(img):
     """
     gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray_img = cv2.GaussianBlur(gray_img, (21, 21), 0)
-    return gray_img
+    erosion = cv2.erode(gray_img,None,iterations = 1);
+    dilation = cv2.dilate(erosion,None,iterations = 1);
+    return dilation
 
 
 def find_contours(img_delta):
@@ -47,6 +49,20 @@ def find_contours(img_delta):
     return contours
 
 
+def cluster_contour(contours):
+    countour_center = np.array((2, len(contours)))
+
+    for contour in contours:
+        (x, y, _, _) = cv2.boundingRect(contour)
+        np.vstack([countour_center, [x, y]])
+    term_crit = (cv2.TERM_CRITERIA_EPS, 30, 0.1)
+
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+    ret, label, center = cv2.kmeans(countour_center, 1, term_crit, 10,  0)
+
+    return label
+
+
 def find_larges_contour(contours):
     """Return largest contour in the list of contour
     """
@@ -55,12 +71,13 @@ def find_larges_contour(contours):
     return contours[largest_contour_index]
 
 
-def draw_box_around_object(contour, img):
+def draw_box_around_object(contour, gray_img, cv_img):
     """Compute the bounding box for the contour, draw it on the frame,
 
     """
     (x, y, w, h) = cv2.boundingRect(contour)
-    cv2.rectangle(img, (x, y), (x + w, y + h), (0, 51, 51), 2)
+    cv2.rectangle(cv_img, (x, y), (x + w, y + h), (0, 51, 51), 2)
+    return gray_img[y: y + h, x: x + w]
 
 
 def draw_box_around_human(img, human):
@@ -68,39 +85,33 @@ def draw_box_around_human(img, human):
         cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
 
 
-def human_detection_callback(cv2_img, gray_img):
+def classify_human(cv2_img, gray_img):
     human = detect_human(gray_img)
     draw_box_around_human(cv2_img, human)
 
 
-def movement_detection_callback(cv2_img, gray_img):
-    # Foreground mask using MOG
-    img_delta = fgbg.apply(gray_img)
-
-    # Get largest contour, presuming that is the object
-    contours = find_contours(img_delta)
-    if contours:
-        largest_contour = find_larges_contour(contours)
-        draw_box_around_object(largest_contour, cv2_img)
-
-    cv2.imshow('kinect_img_background_mask', img_delta)
-
-
 def image_color_callback(data):
-    rospy.loginfo(rospy.get_caller_id() + ' /feeding image color topic')
     cv2_img = CvBridge().imgmsg_to_cv2(data, 'bgr8')
 
     gray_img = process_raw_img(cv2_img)
-
     # Presume that the first frame is the background
     global background
 
     if background is None:
         background = gray_img
 
-    movement_detection_callback(cv2_img, gray_img)
-    human_detection_callback(cv2_img, gray_img)
+    # Foreground mask using MOG
+    img_delta = fgbg.apply(gray_img)
 
+    # Get largest contour, presuming that is the object
+    contours = find_contours(img_delta)
+    object_img = None
+
+    for cnt in contours:
+        object_img = draw_box_around_object(cnt, gray_img, cv2_img)
+        classify_human(cv2_img, object_img)
+
+    cv2.imshow('kinect_img_background_mask', img_delta)
     cv2.imshow('kinect_img_color_detection_feed', cv2_img)
     cv2.waitKey(25)
 
