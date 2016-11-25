@@ -29,9 +29,8 @@ def process_raw_img(img):
     """
     gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray_img = cv2.GaussianBlur(gray_img, (21, 21), 0)
-    erosion = cv2.erode(gray_img,None,iterations = 1);
-    dilation = cv2.dilate(erosion,None,iterations = 1);
-    return dilation
+
+    return gray_img
 
 
 def find_contours(img_delta):
@@ -48,19 +47,22 @@ def find_contours(img_delta):
                                      cv2.CHAIN_APPROX_SIMPLE)
     return contours
 
+# TODO: now have 2D array of x,y of all contours' centers, we muse proceed
+# to clustering
+# http://scikit-learn.org/stable/modules/generated/sklearn.cluster.MeanShift.html#sklearn.cluster.MeanShift.fit
+
 
 def cluster_contour(contours):
-    countour_center = np.array((2, len(contours)))
+    contour_center = None
 
     for contour in contours:
         (x, y, _, _) = cv2.boundingRect(contour)
-        np.vstack([countour_center, [x, y]])
-    term_crit = (cv2.TERM_CRITERIA_EPS, 30, 0.1)
+        if contour_center:
+            contour_center = np.vstack([contour_center, [x, y]])
+        else:
+            contour_center = np.array(([x, y]))
 
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
-    ret, label, center = cv2.kmeans(countour_center, 1, term_crit, 10,  0)
-
-    return label
+    return contour_center
 
 
 def find_larges_contour(contours):
@@ -103,9 +105,16 @@ def image_color_callback(data):
     # Foreground mask using MOG
     img_delta = fgbg.apply(gray_img)
 
-    # Get largest contour, presuming that is the object
     contours = find_contours(img_delta)
     object_img = None
+
+    # TODO: Analyze cluster of contour here
+    if contours:
+        cluster_contour(contours)
+
+    # TODO: instead of pass img captured inside a contour to classifier
+    # We must now get the image covered by a cluster of contour
+    # Then pass it to classifier
 
     for cnt in contours:
         object_img = draw_box_around_object(cnt, gray_img, cv2_img)
