@@ -1,10 +1,10 @@
-#!/usr/bin/env python
-
+#!/usr/bin/env python -W ignore::DeprecationWarning
 import rospy
 import numpy as np
 from sensor_msgs.msg import Image
 import cv2
 from cv_bridge import CvBridge
+from sklearn.cluster import MeanShift, estimate_bandwidth
 
 
 background = None
@@ -47,22 +47,45 @@ def find_contours(img_delta):
                                      cv2.CHAIN_APPROX_SIMPLE)
     return contours
 
-# TODO: now have 2D array of x,y of all contours' centers, we muse proceed
-# to clustering
-# http://scikit-learn.org/stable/modules/generated/sklearn.cluster.MeanShift.html#sklearn.cluster.MeanShift.fit
-
 
 def cluster_contour(contours):
+    suitable_contours = []
+
     contour_center = None
+    labels = None
 
     for contour in contours:
+        # pass if contour is too small
+        if cv2.contourArea(contour) < 50:
+            continue
+
+        suitable_contours.append(contour)
+
         (x, y, _, _) = cv2.boundingRect(contour)
-        if contour_center:
+        if contour_center is not None:
             contour_center = np.vstack([contour_center, [x, y]])
         else:
             contour_center = np.array(([x, y]))
 
-    return contour_center
+    try:
+        # TODO: if there is only one contour, cluster is not needed
+        # Should handle case where only one contour found (e.g: labels is None)
+        bandwidth = estimate_bandwidth(contour_center,
+                                       quantile=0.2, n_samples=500)
+
+        cluster = MeanShift(bandwidth, bin_seeding=True)
+        cluster.fit(contour_center)
+
+        labels = cluster.labels_
+        labels_unique = np.unique(labels)
+        n_clusters_ = len(labels_unique)
+
+        print('Number of cluster: %d', n_clusters_)
+
+    except (ValueError, AttributeError) as error:
+        pass
+
+    return suitable_contours, labels
 
 
 def find_larges_contour(contours):
@@ -71,6 +94,23 @@ def find_larges_contour(contours):
     areas = [cv2.contourArea(c) for c in contours]
     largest_contour_index = np.argmax(areas)
     return contours[largest_contour_index]
+
+
+def draw_box_around_ROI(contours, img):
+    """ Draw on rectangle box for each contour cluster
+
+    """
+    # Keep track of min x, max x, min y , maxy
+    height, width, _ = img.shape
+    min_x, min_y = width, height
+    max_x = max_y = 0
+
+    for cnt in contours:
+        (x, y, w, h) = cv2.boundingRect(cnt)
+        min_x, max_x = min(x, min_x), max(x+w, max_x)
+        min_y, max_y = min(y, min_y), max(y+h, max_y)
+
+    cv2.rectangle(img, (min_x, min_y), (max_x, max_y), (0, 51, 51), 2)
 
 
 def draw_box_around_object(contour, gray_img, cv_img):
@@ -108,21 +148,35 @@ def image_color_callback(data):
     contours = find_contours(img_delta)
     object_img = None
 
-    # TODO: Analyze cluster of contour here
     if contours:
-        cluster_contour(contours)
+        cnts, labels = cluster_contour(contours)
+        # group contours by cluster
+        # TODO: if labels is None, there is only one contour
+        # Should process that contour instead of process
+        # contour by cluster
+
+        if labels is not None:
+            # Get all available cluster label
+            label_unique = np.unique(labels)
+            for label in label_unique:
+
+                label_list = labels.tolist()
+                idx = [i for i, x in enumerate(label_list) if x == label]
+
+                # Draw rectangle box for each contour cluster
+                draw_box_around_ROI([cnts[i] for i in idx], cv2_img)
 
     # TODO: instead of pass img captured inside a contour to classifier
     # We must now get the image covered by a cluster of contour
     # Then pass it to classifier
 
-    for cnt in contours:
-        object_img = draw_box_around_object(cnt, gray_img, cv2_img)
-        classify_human(cv2_img, object_img)
+    #for cnt in contours:
+        #object_img = draw_box_around_object(cnt, gray_img, cv2_img)
+        #classify_human(cv2_img, object_img)
 
     cv2.imshow('kinect_img_background_mask', img_delta)
     cv2.imshow('kinect_img_color_detection_feed', cv2_img)
-    cv2.waitKey(25)
+    cv2.waitKey(0)
 
 
 def listener():
