@@ -5,6 +5,9 @@ from sensor_msgs.msg import Image
 import cv2
 from cv_bridge import CvBridge
 from sklearn.cluster import MeanShift, estimate_bandwidth
+import warnings
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 
 background = None
@@ -111,6 +114,10 @@ def draw_box_around_ROI(contours, img):
         min_y, max_y = min(y, min_y), max(y+h, max_y)
 
     cv2.rectangle(img, (min_x, min_y), (max_x, max_y), (0, 51, 51), 2)
+    cv2.putText(img, "Movement", (min_x, min_y),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 127, 255), 2)
+
+    return img[min_y: max_y, min_x: max_x], (min_x, min_y)
 
 
 def draw_box_around_object(contour, gray_img, cv_img):
@@ -122,14 +129,28 @@ def draw_box_around_object(contour, gray_img, cv_img):
     return gray_img[y: y + h, x: x + w]
 
 
-def draw_box_around_human(img, human):
+def draw_box_around_human(img, human, coordinate_origin):
     for (x, y, w, h) in human:
-        cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 2)
+
+        # convert local coordinate to global img coordinate
+        x_world = x + coordinate_origin[0]
+        y_world = y + coordinate_origin[1]
+        w_world = w + coordinate_origin[0]
+        h_world = h + coordinate_origin[1]
+
+        cv2.rectangle(img, (x_world, y_world), (x_world+w_world,
+                      y_world+h_world), (0, 0, 255), 2)
+
+        print('Human detected. Cooridate: x = {}, y= {}. '.format(x_world,
+              y_world))
+
+        cv2.putText(img, "Hi human!", (x_world, y_world),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
 
-def classify_human(cv2_img, gray_img):
+def classify_human(cv2_img, gray_img, coordinate_origin):
     human = detect_human(gray_img)
-    draw_box_around_human(cv2_img, human)
+    draw_box_around_human(cv2_img, human, coordinate_origin)
 
 
 def image_color_callback(data):
@@ -146,7 +167,6 @@ def image_color_callback(data):
     img_delta = fgbg.apply(gray_img)
 
     contours = find_contours(img_delta)
-    object_img = None
 
     if contours:
         cnts, labels = cluster_contour(contours)
@@ -164,19 +184,16 @@ def image_color_callback(data):
                 idx = [i for i, x in enumerate(label_list) if x == label]
 
                 # Draw rectangle box for each contour cluster
-                draw_box_around_ROI([cnts[i] for i in idx], cv2_img)
+                object_img, coordinate_origin = draw_box_around_ROI([cnts[i]
+                                                                    for i in idx], cv2_img)
+        else:
+            object_img, coordinate_origin = draw_box_around_ROI(contours, cv2_img)
 
-    # TODO: instead of pass img captured inside a contour to classifier
-    # We must now get the image covered by a cluster of contour
-    # Then pass it to classifier
-
-    #for cnt in contours:
-        #object_img = draw_box_around_object(cnt, gray_img, cv2_img)
-        #classify_human(cv2_img, object_img)
+        classify_human(cv2_img, object_img, coordinate_origin)
 
     cv2.imshow('kinect_img_background_mask', img_delta)
     cv2.imshow('kinect_img_color_detection_feed', cv2_img)
-    cv2.waitKey(0)
+    cv2.waitKey(25)
 
 
 def listener():
