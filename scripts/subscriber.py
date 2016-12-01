@@ -8,6 +8,7 @@ from sklearn.cluster import MeanShift, estimate_bandwidth
 import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 
 background = None
@@ -71,8 +72,6 @@ def cluster_contour(contours):
             contour_center = np.array(([x, y]))
 
     try:
-        # TODO: if there is only one contour, cluster is not needed
-        # Should handle case where only one contour found (e.g: labels is None)
         bandwidth = estimate_bandwidth(contour_center,
                                        quantile=0.2, n_samples=500)
 
@@ -83,7 +82,7 @@ def cluster_contour(contours):
         labels_unique = np.unique(labels)
         n_clusters_ = len(labels_unique)
 
-        print('Number of cluster: %d', n_clusters_)
+        #print('Number of cluster: %d', n_clusters_)
 
     except (ValueError, AttributeError) as error:
         pass
@@ -147,10 +146,14 @@ def draw_box_around_human(img, human, coordinate_origin):
         cv2.putText(img, "Hi human!", (x_world, y_world),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
+        return img[y_world: y_world+h_world, x_world: x_world+w_world]
+
 
 def classify_human(cv2_img, gray_img, coordinate_origin):
     human = detect_human(gray_img)
-    draw_box_around_human(cv2_img, human, coordinate_origin)
+    human_roi = draw_box_around_human(cv2_img, human, coordinate_origin)
+
+    return human_roi
 
 
 def image_color_callback(data):
@@ -189,7 +192,8 @@ def image_color_callback(data):
         else:
             object_img, coordinate_origin = draw_box_around_ROI(contours, cv2_img)
 
-        classify_human(cv2_img, object_img, coordinate_origin)
+        human_roi = classify_human(cv2_img, object_img, coordinate_origin)
+        # TODO: track ROI of human being. Tracking code goes here
 
     cv2.imshow('kinect_img_background_mask', img_delta)
     cv2.imshow('kinect_img_color_detection_feed', cv2_img)
