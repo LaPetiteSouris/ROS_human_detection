@@ -6,6 +6,10 @@ import cv2
 from cv_bridge import CvBridge
 from sklearn.cluster import MeanShift, estimate_bandwidth
 import warnings
+import threading
+import os
+
+from tracker import Tracker
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -116,7 +120,7 @@ def draw_box_around_ROI(contours, img):
     cv2.putText(img, "Movement", (min_x, min_y),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 127, 255), 2)
 
-    return img[min_y: max_y, min_x: max_x], (min_x, min_y)
+    return img[min_y: max_y, min_x: max_x], (min_x, min_y, max_x, max_y)
 
 
 def draw_box_around_object(contour, gray_img, cv_img):
@@ -132,28 +136,31 @@ def draw_box_around_human(img, human, coordinate_origin):
     for (x, y, w, h) in human:
 
         # convert local coordinate to global img coordinate
-        x_world = x + coordinate_origin[0]
-        y_world = y + coordinate_origin[1]
-        w_world = w + coordinate_origin[0]
-        h_world = h + coordinate_origin[1]
+        x_min_world = coordinate_origin[0]
+        y_min_world = coordinate_origin[1]
+        x_max_world = coordinate_origin[2]
+        y_max_world = coordinate_origin[3]
 
-        cv2.rectangle(img, (x_world, y_world), (x_world+w_world,
-                      y_world+h_world), (0, 0, 255), 2)
+        cv2.rectangle(img, (x_min_world, y_min_world), (x_max_world,
+                      y_max_world), (0, 0, 255), 2)
 
-        print('Human detected. Cooridate: x = {}, y= {}. '.format(x_world,
-              y_world))
+        print('Human detected. Cooridate: x = {}, y={}'.format((x_min_world+x_max_world)*0.5,
+              (y_min_world+y_max_world)*0.5))
 
-        cv2.putText(img, "Hi human!", (x_world, y_world),
+        cv2.putText(img, "Hi human!", (x_max_world, y_max_world),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
-        return img[y_world: y_world+h_world, x_world: x_world+w_world]
+        return img[y_min_world: y_max_world, x_min_world: x_max_world], coordinate_origin
 
 
 def classify_human(cv2_img, gray_img, coordinate_origin):
     human = detect_human(gray_img)
-    human_roi = draw_box_around_human(cv2_img, human, coordinate_origin)
 
-    return human_roi
+    try:
+        human_roi, track_window = draw_box_around_human(cv2_img, human, coordinate_origin)
+        return human_roi, track_window
+    except TypeError as e:
+        pass
 
 
 def image_color_callback(data):
@@ -174,9 +181,6 @@ def image_color_callback(data):
     if contours:
         cnts, labels = cluster_contour(contours)
         # group contours by cluster
-        # TODO: if labels is None, there is only one contour
-        # Should process that contour instead of process
-        # contour by cluster
 
         if labels is not None:
             # Get all available cluster label
@@ -187,13 +191,22 @@ def image_color_callback(data):
                 idx = [i for i, x in enumerate(label_list) if x == label]
 
                 # Draw rectangle box for each contour cluster
-                object_img, coordinate_origin = draw_box_around_ROI([cnts[i]
-                                                                    for i in idx], cv2_img)
+                object_img, coordinate_origin = draw_box_around_ROI([cnts[i] for i in idx], cv2_img)
         else:
-            object_img, coordinate_origin = draw_box_around_ROI(contours, cv2_img)
+            object_img, coordinate_origin = draw_box_around_ROI(contours,
+                                                                cv2_img)
+        try:
+            human_roi, track_window = classify_human(cv2_img,
+                                                     object_img,
+                                                     coordinate_origin)
+            if human_roi is not None:
+                tracker = Tracker(cv2_img, human_roi, track_window)
+                pid = os.fork()
+                if not pid:
+                    tracker.listen()
 
-        human_roi = classify_human(cv2_img, object_img, coordinate_origin)
-        # TODO: track ROI of human being. Tracking code goes here
+        except TypeError as e:
+            pass
 
     cv2.imshow('kinect_img_background_mask', img_delta)
     cv2.imshow('kinect_img_color_detection_feed', cv2_img)
