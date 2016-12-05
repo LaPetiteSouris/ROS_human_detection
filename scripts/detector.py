@@ -6,8 +6,7 @@ import cv2
 from cv_bridge import CvBridge
 from sklearn.cluster import MeanShift, estimate_bandwidth
 import warnings
-import threading
-import os
+import uuid
 
 from tracker import Tracker
 
@@ -19,6 +18,7 @@ background = None
 fgbg = cv2.BackgroundSubtractorMOG()
 full_body_cascade = './haarcascade_fullbody.xml'
 human_cascade = cv2.CascadeClassifier(full_body_cascade)
+tracking_list = []
 
 
 def detect_human(img):
@@ -164,6 +164,19 @@ def classify_human(cv2_img, gray_img, coordinate_origin):
 
 
 def image_color_callback(data):
+
+    # TODO: This callback does too much work, should separate
+    global tracking_list
+
+    '''for tracker in tracking_list:
+        tracker.track_callback(data)
+    '''
+    try:
+        tracking_list[1].track_callback(data)
+        tracking_list[3].track_callback(data)
+    except IndexError as error:
+        pass
+
     cv2_img = CvBridge().imgmsg_to_cv2(data, 'bgr8')
 
     gray_img = process_raw_img(cv2_img)
@@ -200,10 +213,18 @@ def image_color_callback(data):
                                                      object_img,
                                                      coordinate_origin)
             if human_roi is not None:
-                tracker = Tracker(cv2_img, human_roi, track_window)
-                pid = os.fork()
-                if not pid:
-                    tracker.listen()
+                x_min, y_min, x_max, y_max = coordinate_origin
+                track_window = (x_min, y_min, x_max-x_min, y_max-y_min)
+
+                tracker = Tracker(cv2_img, human_roi, track_window,
+                                  str(uuid.uuid4()))
+
+                if len(tracking_list) > 4:
+                    # TODO: Empty tracking list
+                    # tracking_list = []
+                    pass
+
+                tracking_list.append(tracker)
 
         except TypeError as e:
             pass
