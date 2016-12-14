@@ -1,8 +1,8 @@
 #!/usr/bin/env python -W ignore::DeprecationWarning
 
 import numpy as np
-from cv_bridge import CvBridge
 import cv2
+from cv_bridge import CvBridge
 
 
 class Tracker:
@@ -25,7 +25,6 @@ class Tracker:
 
     def track_callback(self, data):
         frame = CvBridge().imgmsg_to_cv2(data, 'bgr8')
-
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         dst = cv2.calcBackProject([hsv], [0], self.roi_hist, [0, 180], 1)
 
@@ -37,7 +36,7 @@ class Tracker:
         # Draw it on image
 
         x, y, w, h = self.track_window
-        cv2.rectangle(frame, (x, y), (x+w, y+h), 255, 2)
+        cv2.rectangle(frame, (x, y), (x + w, y + h), 255, 2)
 
         cv2.imshow('Tracker {}'.format(self.id), frame)
         cv2.waitKey(25)

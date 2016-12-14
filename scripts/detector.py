@@ -4,6 +4,7 @@ import numpy as np
 from sensor_msgs.msg import Image
 import cv2
 from cv_bridge import CvBridge
+import message_filters
 from sklearn.cluster import MeanShift, estimate_bandwidth
 import warnings
 import uuid
@@ -19,6 +20,14 @@ fgbg = cv2.BackgroundSubtractorMOG()
 full_body_cascade = './haarcascade_fullbody.xml'
 human_cascade = cv2.CascadeClassifier(full_body_cascade)
 tracking_list = []
+
+bridge = CvBridge()
+
+
+def get_depth_from_img(depth_img, pos):
+    # TODO: verify y, x coordinate in image
+    # may be it is inversed
+    return depth_img[pos[1], pos[0]]
 
 
 def detect_human(img):
@@ -56,7 +65,7 @@ def find_contours(img_delta):
     return contours
 
 
-def cluster_contour(contours):
+def cluster_contour(contours, depth_img):
     suitable_contours = []
 
     contour_center = None
@@ -70,6 +79,8 @@ def cluster_contour(contours):
         suitable_contours.append(contour)
 
         (x, y, _, _) = cv2.boundingRect(contour)
+        print(get_depth_from_img(depth_img, (x, y)))
+
         if contour_center is not None:
             contour_center = np.vstack([contour_center, [x, y]])
         else:
@@ -86,7 +97,7 @@ def cluster_contour(contours):
         labels_unique = np.unique(labels)
         n_clusters_ = len(labels_unique)
 
-        #print('Number of cluster: %d', n_clusters_)
+        # print('Number of cluster: %d', n_clusters_)
 
     except (ValueError, AttributeError) as error:
         pass
@@ -113,8 +124,8 @@ def draw_box_around_ROI(contours, img):
 
     for cnt in contours:
         (x, y, w, h) = cv2.boundingRect(cnt)
-        min_x, max_x = min(x, min_x), max(x+w, max_x)
-        min_y, max_y = min(y, min_y), max(y+h, max_y)
+        min_x, max_x = min(x, min_x), max(x + w, max_x)
+        min_y, max_y = min(y, min_y), max(y + h, max_y)
 
     cv2.rectangle(img, (min_x, min_y), (max_x, max_y), (0, 51, 51), 2)
     cv2.putText(img, "Movement", (min_x, min_y),
@@ -144,8 +155,8 @@ def draw_box_around_human(img, human, coordinate_origin):
         cv2.rectangle(img, (x_min_world, y_min_world), (x_max_world,
                       y_max_world), (0, 0, 255), 2)
 
-        print('Human detected. Cooridate: x = {}, y={}'.format((x_min_world+x_max_world)*0.5,
-              (y_min_world+y_max_world)*0.5))
+        print('Human detected. Cooridate: x = {}, y={}'.format((x_min_world + x_max_world) * 0.5,
+              (y_min_world + y_max_world) * 0.5))
 
         cv2.putText(img, "Hi human!", (x_max_world, y_max_world),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
@@ -163,13 +174,24 @@ def classify_human(cv2_img, gray_img, coordinate_origin):
         pass
 
 
-def image_color_callback(data):
+def detection_callback(color_img, depth_img):
+
+    # Convert imgs to opencv format
+    color_cv2_img = CvBridge().imgmsg_to_cv2(color_img, 'bgr8')
+    cv2_depth = bridge.imgmsg_to_cv2(depth_img, '32FC1')
+    depth_array = np.array(cv2_depth, dtype=np.float32)
+
+    # Launch main algo to start detection/tracking
+    launch_detection(color_cv2_img, depth_array, color_img)
+
+
+def launch_detection(color_cv2_img, depth_img, raw_data):
 
     # TODO: This callback does too much work, should separate
     global tracking_list
 
     for tracker in tracking_list:
-        tracker.track_callback(data)
+        tracker.track_callback(raw_data)
     '''
     try:
         tracking_list[1].track_callback(data)
@@ -177,9 +199,8 @@ def image_color_callback(data):
     except IndexError as error:
         pass
 '''
-    cv2_img = CvBridge().imgmsg_to_cv2(data, 'bgr8')
 
-    gray_img = process_raw_img(cv2_img)
+    gray_img = process_raw_img(color_cv2_img)
     # Presume that the first frame is the background
     global background
 
@@ -192,7 +213,7 @@ def image_color_callback(data):
     contours = find_contours(img_delta)
 
     if contours:
-        cnts, labels = cluster_contour(contours)
+        cnts, labels = cluster_contour(contours, depth_img)
         # group contours by cluster
 
         if labels is not None:
@@ -204,19 +225,19 @@ def image_color_callback(data):
                 idx = [i for i, x in enumerate(label_list) if x == label]
 
                 # Draw rectangle box for each contour cluster
-                object_img, coordinate_origin = draw_box_around_ROI([cnts[i] for i in idx], cv2_img)
+                object_img, coordinate_origin = draw_box_around_ROI([cnts[i] for i in idx], color_cv2_img)
         else:
             object_img, coordinate_origin = draw_box_around_ROI(contours,
-                                                                cv2_img)
+                                                                color_cv2_img)
         try:
-            human_roi, track_window = classify_human(cv2_img,
+            human_roi, track_window = classify_human(color_cv2_img,
                                                      object_img,
                                                      coordinate_origin)
             if human_roi is not None:
                 x_min, y_min, x_max, y_max = coordinate_origin
-                track_window = (x_min, y_min, x_max-x_min, y_max-y_min)
+                track_window = (x_min, y_min, x_max - x_min, y_max - y_min)
 
-                tracker = Tracker(cv2_img, human_roi, track_window,
+                tracker = Tracker(color_cv2_img, human_roi, track_window,
                                   str(uuid.uuid4()))
 
                 if len(tracking_list) > 5:
@@ -231,7 +252,7 @@ def image_color_callback(data):
             pass
 
     # cv2.imshow('kinect_img_background_mask', img_delta)
-    cv2.imshow('kinect_img_color_detection_feed', cv2_img)
+    cv2.imshow('kinect_img_color_detection_feed', color_cv2_img)
     cv2.waitKey(25)
 
 
@@ -239,9 +260,13 @@ def listener():
 
     rospy.init_node('detection', anonymous=True)
 
-    rospy.Subscriber('/kinect2/qhd/image_color_rect', Image,
-                     image_color_callback)
+    # Subcribe multiple topics at the same time with sync
+    color_sub = message_filters.Subscriber('/kinect2/qhd/image_color_rect', Image)
+    depth_sub = message_filters.Subscriber('/kinect2/qhd/image_depth_rect', Image)
 
+    ts = message_filters.TimeSynchronizer([color_sub, depth_sub], 10)
+
+    ts.registerCallback(detection_callback)
     # spin() simply keeps python from exiting until this node is stopped
     rospy.spin()
 
