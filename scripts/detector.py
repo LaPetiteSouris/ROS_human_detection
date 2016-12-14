@@ -168,7 +168,7 @@ def image_color_callback(data):
     # TODO: This callback does too much work, should separate
     global tracking_list
 
-    '''for tracker in tracking_list:
+    for tracker in tracking_list:
         tracker.track_callback(data)
     '''
     try:
@@ -176,7 +176,7 @@ def image_color_callback(data):
         tracking_list[3].track_callback(data)
     except IndexError as error:
         pass
-
+'''
     cv2_img = CvBridge().imgmsg_to_cv2(data, 'bgr8')
 
     gray_img = process_raw_img(cv2_img)
@@ -219,17 +219,18 @@ def image_color_callback(data):
                 tracker = Tracker(cv2_img, human_roi, track_window,
                                   str(uuid.uuid4()))
 
-                if len(tracking_list) > 4:
+                if len(tracking_list) > 5:
+
                     # TODO: Empty tracking list
-                    # tracking_list = []
-                    pass
+                    tracking_list = []
+                    cv2.destroyAllWindows()
 
                 tracking_list.append(tracker)
 
         except TypeError as e:
             pass
 
-    cv2.imshow('kinect_img_background_mask', img_delta)
+    # cv2.imshow('kinect_img_background_mask', img_delta)
     cv2.imshow('kinect_img_color_detection_feed', cv2_img)
     cv2.waitKey(25)
 
