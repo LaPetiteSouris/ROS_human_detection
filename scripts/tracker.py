@@ -6,21 +6,24 @@ from cv_bridge import CvBridge
 
 
 class Tracker:
+
     def __init__(self, frame, roi, track_window, uuid):
 
         self.hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        self.mask = cv2.inRange(self.hsv_roi, np.array((0., 60., 32.)),
-                                np.array((180., 255., 255.)))
+        self.mask = cv2.inRange(self.hsv_roi, np.array(
+            (0., 60., 32.)), np.array((180., 255., 255.)))
 
-        self.roi_hist = cv2.calcHist([self.hsv_roi],
-                                     [0], self.mask, [180], [0, 180])
+        self.roi_hist = cv2.calcHist(
+            [self.hsv_roi], [0], self.mask, [180], [0, 180])
 
         cv2.normalize(self.roi_hist, self.roi_hist, 0, 255, cv2.NORM_MINMAX)
         self.track_window = track_window
         self.id = uuid
 
-        # Setup the termination criteria, either 10 iteration or move by at least 1 pt
-        self.term_crit = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 1)
+        # Setup the termination criteria, either 10 iteration or move by at
+        # least 1 pt
+        self.term_crit = (cv2.TERM_CRITERIA_EPS |
+                          cv2.TERM_CRITERIA_COUNT, 10, 1)
         self.id = uuid
 
     def track_callback(self, data):
