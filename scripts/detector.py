@@ -16,6 +16,9 @@ Rectangle = namedtuple('Rectangle', 'xmin ymin xmax ymax')
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
+# limit above which we launch new tracker
+overlap_limit = 25
+
 background = None
 fgbg = cv2.BackgroundSubtractorMOG()
 full_body_cascade = './haarcascade_fullbody.xml'
@@ -197,7 +200,6 @@ def calculate_overlapping_reg(rect1, rect2):
     dy = min(rectangle1.ymax, rectangle2.ymax) - max(rectangle1.ymin,
                                                      rectangle2.ymin)
     if (dx >= 0) and (dy >= 0):
-        print(dx * dy)
         return dx * dy
 
     return 0
@@ -212,8 +214,17 @@ def is_tracked(rect):
         res(boolean): True or False
     '''
     for tracker in tracking_list:
-        if calculate_overlapping_reg(rect, tracker.track_window) > 100:
+        # area = w * h
+        tracked_area = tracker.track_window[2] * tracker.track_window[3]
+        overlapping_percent = float(
+            calculate_overlapping_reg(rect, tracker.track_window)) / float(
+                tracked_area) * 100
+        print(overlapping_percent)
+
+        if overlapping_percent > overlap_limit:
+
             return True
+
         return False
 
 
@@ -280,18 +291,18 @@ def launch_detection(color_cv2_img, depth_img, raw_data):
                 x_min, y_min, x_max, y_max = coordinate_origin
                 track_window = (x_min, y_min, x_max - x_min, y_max - y_min)
 
-                tracker = Tracker(color_cv2_img, human_roi, track_window,
-                                  str(uuid.uuid4()))
                 # TODO: Check if there is an overlapping region before add
                 # tracker to list
-                is_tracked(track_window)
-
+                if not is_tracked(track_window):
+                    tracker = Tracker(color_cv2_img, human_roi, track_window,
+                                      str(uuid.uuid4()))
+                '''
                 if len(tracking_list) > 5:
 
                     # TODO: Empty tracking list
                     tracking_list = []
                     cv2.destroyAllWindows()
-
+                '''
                 tracking_list.append(tracker)
 
         except TypeError as e:
