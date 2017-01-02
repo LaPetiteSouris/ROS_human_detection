@@ -28,12 +28,6 @@ tracking_list = []
 bridge = CvBridge()
 
 
-def get_depth_from_img(depth_img, pos):
-    # TODO: verify y, x coordinate in image
-    # may be it is inversed
-    return depth_img[pos[1], pos[0]]
-
-
 def detect_human(img):
     return human_cascade.detectMultiScale(img, 1.1, 1)
 
@@ -219,7 +213,6 @@ def is_tracked(rect):
         overlapping_percent = float(
             calculate_overlapping_reg(rect, tracker.track_window)) / float(
                 tracked_area) * 100
-        print(overlapping_percent)
 
         if overlapping_percent > overlap_limit:
 
@@ -232,7 +225,7 @@ def detection_callback(color_img, depth_img):
 
     # Convert imgs to opencv format
     color_cv2_img = CvBridge().imgmsg_to_cv2(color_img, 'bgr8')
-    cv2_depth = bridge.imgmsg_to_cv2(depth_img, '32FC1')
+    cv2_depth = bridge.imgmsg_to_cv2(depth_img)
     depth_array = np.array(cv2_depth, dtype=np.float32)
 
     # Launch main algo to start detection/tracking
@@ -245,7 +238,7 @@ def launch_detection(color_cv2_img, depth_img, raw_data):
     global tracking_list
 
     for tracker in tracking_list:
-        tracker.track_callback(raw_data)
+        tracker.track_callback(raw_data, depth_img)
     '''
     try:
         tracking_list[1].track_callback(data)
