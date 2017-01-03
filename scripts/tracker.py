@@ -19,6 +19,7 @@ class Tracker:
         cv2.normalize(self.roi_hist, self.roi_hist, 0, 255, cv2.NORM_MINMAX)
         self.track_window = track_window
         self.id = uuid
+        self.paths = []
 
         # Setup the termination criteria, either 10 iteration or move by at
         # least 1 pt
@@ -27,8 +28,6 @@ class Tracker:
         self.id = uuid
 
     def get_depth_from_img(self, depth_img, pos):
-        # TODO: verify y, x coordinate in image
-        # may be it is inversed
         return depth_img[pos[1], pos[0]]
 
     def track_callback(self, data, depth_img):
@@ -44,7 +43,13 @@ class Tracker:
 
         x, y, w, h = self.track_window
         cv2.rectangle(frame, (x, y), (x + w, y + h), 255, 2)
-        print(self.get_depth_from_img(depth_img, (x, y)))
+        z = self.get_depth_from_img(depth_img, (x, y))
+        cor_text = 'x={}, y={},z={}'.format(x, y, z)
+
+        cv2.putText(frame, cor_text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    (0, 0, 255), 2)
+        print('Coordinate of object {} is {}'.format(self.id, cor_text))
+        self.paths.append((x, y, z))
 
         cv2.imshow('Tracker {}'.format(self.id), frame)
         cv2.waitKey(25)

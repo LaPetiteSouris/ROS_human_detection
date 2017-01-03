@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 # limit above which we launch new tracker
-overlap_limit = 25
+overlap_limit = 20
 
 background = None
 fgbg = cv2.BackgroundSubtractorMOG()
@@ -30,6 +30,12 @@ bridge = CvBridge()
 
 def detect_human(img):
     return human_cascade.detectMultiScale(img, 1.1, 1)
+
+
+def get_depth_from_img(depth_img, pos):
+    # TODO: verify y, x coordinate in image
+    # may be it is inversed
+    return depth_img[pos[1], pos[0]]
 
 
 def process_raw_img(img):
@@ -77,12 +83,13 @@ def cluster_contour(contours, depth_img):
         suitable_contours.append(contour)
 
         (x, y, _, _) = cv2.boundingRect(contour)
-        # print(get_depth_from_img(depth_img, (x, y)))
+
+        z = get_depth_from_img(depth_img, (x, y))
 
         if contour_center is not None:
-            contour_center = np.vstack([contour_center, [x, y]])
+            contour_center = np.vstack([contour_center, [x, y, z]])
         else:
-            contour_center = np.array(([x, y]))
+            contour_center = np.array(([x, y, z]))
 
     try:
         bandwidth = estimate_bandwidth(
@@ -101,14 +108,6 @@ def cluster_contour(contours, depth_img):
         pass
 
     return suitable_contours, labels
-
-
-def find_larges_contour(contours):
-    """Return largest contour in the list of contour
-    """
-    areas = [cv2.contourArea(c) for c in contours]
-    largest_contour_index = np.argmax(areas)
-    return contours[largest_contour_index]
 
 
 def draw_box_around_ROI(contours, img):
