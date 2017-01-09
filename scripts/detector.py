@@ -10,13 +10,16 @@ import warnings
 import uuid
 from collections import namedtuple
 from tracker import Tracker
+import robot
+import click
 
 Rectangle = namedtuple('Rectangle', 'xmin ymin xmax ymax')
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
-
-# limit above which we launch new tracker
+# launch calibertion mode
+is_caliberation = False
+# limit above which we decide that object has been tracked already
 overlap_limit = 20
 
 background = None
@@ -26,6 +29,8 @@ human_cascade = cv2.CascadeClassifier(full_body_cascade)
 tracking_list = []
 
 bridge = CvBridge()
+
+robot_pos = None
 
 
 def detect_human(img):
@@ -127,6 +132,8 @@ def draw_box_around_ROI(contours, img):
     cv2.rectangle(img, (min_x, min_y), (max_x, max_y), (0, 51, 51), 2)
     cv2.putText(img, "Movement", (min_x, min_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                 (0, 127, 255), 2)
+    if is_caliberation:
+        print('Height is {}', max_y - min_y)
 
     return img[min_y:max_y, min_x:max_x], (min_x, min_y, max_x, max_y)
 
@@ -137,6 +144,7 @@ def draw_box_around_object(contour, gray_img, cv_img):
     """
     (x, y, w, h) = cv2.boundingRect(contour)
     cv2.rectangle(cv_img, (x, y), (x + w, y + h), (0, 51, 51), 2)
+
     return gray_img[y:y + h, x:x + w]
 
 
@@ -214,14 +222,12 @@ def is_tracked(rect):
                 tracked_area) * 100
 
         if overlapping_percent > overlap_limit:
-
             return True
 
-        return False
+    return False
 
 
 def detection_callback(color_img, depth_img):
-
     # Convert imgs to opencv format
     color_cv2_img = CvBridge().imgmsg_to_cv2(color_img, 'bgr8')
     cv2_depth = bridge.imgmsg_to_cv2(depth_img)
@@ -233,11 +239,17 @@ def detection_callback(color_img, depth_img):
 
 def launch_detection(color_cv2_img, depth_img, raw_data):
 
-    # TODO: This callback does too much work, should separate
-    global tracking_list
+    # Get robot pos:
+    global robot_pos
+    if not robot_pos:
+        robot_pos = robot.find_robot(color_cv2_img, depth_img)
 
-    for tracker in tracking_list:
-        tracker.track_callback(raw_data, depth_img)
+    # TODO: This callback does too much work, should separate
+    # If in caliberation mode, do not launch tracker
+    global tracking_list
+    if not is_caliberation:
+        for tracker in tracking_list:
+            tracker.track_callback(raw_data, depth_img)
     '''
     try:
         tracking_list[1].track_callback(data)
@@ -283,29 +295,30 @@ def launch_detection(color_cv2_img, depth_img, raw_data):
                 x_min, y_min, x_max, y_max = coordinate_origin
                 track_window = (x_min, y_min, x_max - x_min, y_max - y_min)
 
-                # TODO: Check if there is an overlapping region before add
+                # Check if there is an overlapping region before add
                 # tracker to list
                 if not is_tracked(track_window):
                     tracker = Tracker(color_cv2_img, human_roi, track_window,
-                                      str(uuid.uuid4()))
-                '''
-                if len(tracking_list) > 5:
-
-                    # TODO: Empty tracking list
-                    tracking_list = []
-                    cv2.destroyAllWindows()
-                '''
-                tracking_list.append(tracker)
+                                      str(uuid.uuid4()), robot_pos)
+                    tracking_list.append(tracker)
 
         except TypeError as e:
             pass
+
+    if is_caliberation:
+        cv2.imshow('kinect_img_color_detection_feed', color_cv2_img)
+        cv2.waitKey(0)
 
     # cv2.imshow('kinect_img_background_mask', img_delta)
     cv2.imshow('kinect_img_color_detection_feed', color_cv2_img)
     cv2.waitKey(25)
 
 
-def listener():
+@click.command()
+@click.option('--caliberate', default=False, help='run caliberation mode')
+def main(caliberate):
+    global is_caliberation
+    is_caliberation = caliberate
 
     rospy.init_node('detection', anonymous=True)
 
@@ -323,4 +336,4 @@ def listener():
 
 
 if __name__ == '__main__':
-    listener()
+    main()
