@@ -32,6 +32,9 @@ class Tracker:
         self.term_crit = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10,
                           1)
         self.id = uuid
+
+        # Distance
+        self.distance = []
         notify2.init(self.id)
 
     def get_depth_from_img(self, depth_img, pos):
@@ -40,28 +43,24 @@ class Tracker:
     def calculate_distance_to_robot(self, obj_pos):
         return distance.euclidean(self.robot_pos, obj_pos)
 
-    def alert(self, dis):
-        if dis < 800 and dis > 600:
-            n = notify2.Notification(
-                "Warning",
-                "Agent is approaching forbidden zone",
-                "notification-message-im"  # Icon name
-            )
-            n.show()
-        elif dis < 600 and dis > 100:
-            n = notify2.Notification(
-                "Alert",
-                "Agent is too close to forbidden zone",
-                "notification-message-im"  # Icon name
-            )
-            n.show()
-        elif dis < 100:
-            n = notify2.Notification(
-                "Critical",
-                "Collision between agent and forbidden zone",
-                "notification-message-im"  # Icon name
-            )
-            n.show()
+    def moving_average(self, interval, window_size):
+        window = np.ones(int(window_size)) / float(window_size)
+        return np.convolve(interval, window, 'same')
+
+    def get_alert_condition(self):
+        # Lastest distance
+        dis = self.distance[-1]
+        if dis < 1500 and dis > 1000:
+            return 'Warning: Agent is too close with dangerous zone !', (
+                0, 255, 255)
+
+        elif dis < 1000 and dis > 600:
+            return 'Alert: Agent is inside dangerous zone !', (0, 64, 255)
+
+        elif dis < 600 and dis > 0:
+            return 'Critical: Agent is in collision with robot !', (0, 0, 255)
+
+        return None, None
 
     def track_callback(self, data, depth_img):
         frame = CvBridge().imgmsg_to_cv2(data, 'bgr8')
@@ -86,9 +85,19 @@ class Tracker:
 
         distance = self.calculate_distance_to_robot((x * self.calib,
                                                      y * self.calib, z))
+
         print('Distance between object and forbidden zone is {} mm'.format(
             distance))
-        self.alert(distance)
+
+        self.distance.append(distance)
+
+        # alert sitution check
+        status_alert, color_text = self.get_alert_condition()
+
+        # insert warning/alert into frame
+        if status_alert:
+            cv2.putText(frame, status_alert, (10, 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_text, 2)
 
         cv2.imshow('Tracker {}'.format(self.id), frame)
         cv2.waitKey(33)
